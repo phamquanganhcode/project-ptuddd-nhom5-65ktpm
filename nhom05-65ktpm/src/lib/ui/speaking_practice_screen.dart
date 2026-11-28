@@ -9,6 +9,8 @@ import 'package:path/path.dart' as p;
 import '../data/lessons.dart';
 import '../scoring/phonemes.dart';
 import '../services/audio_recorder_service.dart';
+import '../services/mentor_submission_service.dart';
+import 'submitted_assignments_screen.dart';
 
 /// Màn hình luyện tập nói với bộ thu âm WAV tạm vào bộ nhớ máy,
 /// xử lý quyền micro và trình phát lại bản ghi âm của người học.
@@ -22,6 +24,7 @@ class SpeakingPracticeScreen extends StatefulWidget {
 class _SpeakingPracticeScreenState extends State<SpeakingPracticeScreen>
     with WidgetsBindingObserver {
   final _recorderService = AudioRecorderService();
+  final _submissionService = MentorSubmissionService();
   final _player = AudioPlayer();
   final _tts = FlutterTts();
   final _level = ValueNotifier<double>(0.0);
@@ -39,6 +42,7 @@ class _SpeakingPracticeScreenState extends State<SpeakingPracticeScreen>
 
   bool _isRecording = false;
   bool _isBusy = false;
+  bool _isSubmitting = false;
   bool _disposed = false;
 
   bool _isPlaying = false;
@@ -357,6 +361,64 @@ class _SpeakingPracticeScreenState extends State<SpeakingPracticeScreen>
     await _tts.speak(_currentPrompt);
   }
 
+  Future<void> _openSubmittedAssignments() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (_isPlaying) {
+      await _player.pause();
+    }
+    if (!mounted || _disposed) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const SubmittedAssignmentsScreen()),
+    );
+  }
+
+  Future<void> _showSubmitDialog() async {
+    final path = _recordedPath;
+    if (path == null || _isRecording || _isSubmitting) return;
+    if (_isPlaying) {
+      await _player.pause();
+    }
+    if (!mounted || _disposed) return;
+
+    final submissionInput = await showDialog<({String title, String note})>(
+      context: context,
+      builder: (_) => _SubmitAssignmentDialog(defaultPrompt: _currentPrompt),
+    );
+
+    if (submissionInput == null || !mounted || _disposed) return;
+    setState(() => _isSubmitting = true);
+    try {
+      final durationSecs = (_recordedDuration ?? _playDuration).inSeconds;
+      await _submissionService.submitRecording(
+        title: submissionInput.title,
+        note: submissionInput.note,
+        promptText: _currentPrompt,
+        sourceAudioPath: path,
+        durationSeconds: durationSecs,
+        fileSizeBytes: _recordedBytes ?? 0,
+      );
+      if (!mounted || _disposed) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('Đã nộp bài cho mentor thành công.'),
+            action: SnackBarAction(
+              label: 'Xem bài đã nộp',
+              onPressed: () => unawaited(_openSubmittedAssignments()),
+            ),
+          ),
+        );
+    } catch (e) {
+      if (!mounted || _disposed) return;
+      _showSnack('Không thể nộp bài: $e');
+    } finally {
+      if (mounted && !_disposed) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
   Future<void> _showPermissionSettingsDialog() {
     return showDialog<void>(
       context: context,
@@ -428,7 +490,16 @@ class _SpeakingPracticeScreenState extends State<SpeakingPracticeScreen>
     final displayPosition = Duration(milliseconds: currentMs.round());
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Luyện nói & Thu âm')),
+      appBar: AppBar(
+        title: const Text('Luyện nói & Thu âm'),
+        actions: [
+          IconButton(
+            tooltip: 'Bài đã nộp & Nhận xét',
+            onPressed: _openSubmittedAssignments,
+            icon: const Icon(Icons.assignment_turned_in_outlined),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -657,6 +728,29 @@ class _SpeakingPracticeScreenState extends State<SpeakingPracticeScreen>
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _isRecording || _isSubmitting
+                            ? null
+                            : _showSubmitDialog,
+                        icon: _isSubmitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.send),
+                        label: Text(
+                          _isSubmitting
+                              ? 'Đang nộp bài...'
+                              : 'Nộp bài cho mentor',
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -664,6 +758,86 @@ class _SpeakingPracticeScreenState extends State<SpeakingPracticeScreen>
           ],
         ],
       ),
+    );
+  }
+}
+
+class _SubmitAssignmentDialog extends StatefulWidget {
+  final String defaultPrompt;
+
+  const _SubmitAssignmentDialog({required this.defaultPrompt});
+
+  @override
+  State<_SubmitAssignmentDialog> createState() =>
+      _SubmitAssignmentDialogState();
+}
+
+class _SubmitAssignmentDialogState extends State<_SubmitAssignmentDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _titleController = TextEditingController(
+    text: 'Luyện nói: ${widget.defaultPrompt}',
+  );
+  final _noteController = TextEditingController();
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  void _close([({String title, String note})? result]) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!mounted) return;
+    Navigator.of(context).pop(result);
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    _close((title: _titleController.text, note: _noteController.text));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nộp bài cho mentor'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: 'Tiêu đề bài nộp',
+                border: OutlineInputBorder(),
+              ),
+              maxLength: 80,
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'Nhập tiêu đề' : null,
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _noteController,
+              decoration: const InputDecoration(
+                labelText: 'Ghi chú cho mentor (tùy chọn)',
+                hintText: 'Ví dụ: Em muốn kiểm tra âm cuối và ngữ điệu...',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+              maxLength: 200,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => _close(), child: const Text('Hủy')),
+        FilledButton.icon(
+          onPressed: _submit,
+          icon: const Icon(Icons.send),
+          label: const Text('Nộp bài'),
+        ),
+      ],
     );
   }
 }
