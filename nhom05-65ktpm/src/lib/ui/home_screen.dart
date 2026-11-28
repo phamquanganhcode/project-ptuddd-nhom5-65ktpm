@@ -15,6 +15,8 @@ import '../scoring/rate.dart';
 import '../scoring/weak_sounds.dart';
 import 'attempt_detail_screen.dart';
 import 'practice_screen.dart';
+import 'speaking_practice_screen.dart';
+import 'submitted_assignments_screen.dart';
 import 'goal_slider.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -134,6 +136,32 @@ class _LessonsTab extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       children: [
         _TodayCard(user, stats),
+        Card(
+          child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.mic)),
+            title: const Text('Luyện nói & Thu âm'),
+            subtitle: const Text('Thu âm giọng nói và lưu file WAV tạm'),
+            trailing: FilledButton.tonal(
+              onPressed: () => openSpeakingPractice(context),
+              child: const Text('Mở'),
+            ),
+            onTap: () => openSpeakingPractice(context),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const CircleAvatar(
+              child: Icon(Icons.assignment_turned_in),
+            ),
+            title: const Text('Bài đã nộp & Nhận xét'),
+            subtitle: const Text('Nghe lại bài đã nộp và xem phản hồi mentor'),
+            trailing: FilledButton.tonal(
+              onPressed: () => openSubmittedAssignments(context),
+              child: const Text('Xem'),
+            ),
+            onTap: () => openSubmittedAssignments(context),
+          ),
+        ),
         if (rec != null)
           Card(
             color: Theme.of(context).colorScheme.primaryContainer,
@@ -198,6 +226,20 @@ class _LessonSubtitle extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Mở màn hình luyện nói & thu âm WAV tạm.
+Future<void> openSpeakingPractice(BuildContext context) {
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute(builder: (_) => const SpeakingPracticeScreen()),
+  );
+}
+
+/// Mở màn hình bài đã nộp & nhận xét từ mentor.
+Future<void> openSubmittedAssignments(BuildContext context) {
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute(builder: (_) => const SubmittedAssignmentsScreen()),
+  );
 }
 
 /// Runs a timed practice session; the practice screen may return another
