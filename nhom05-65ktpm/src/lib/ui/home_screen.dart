@@ -15,6 +15,7 @@ import '../scoring/rate.dart';
 import '../scoring/weak_sounds.dart';
 import 'attempt_detail_screen.dart';
 import 'practice_screen.dart';
+import 'speaking_practice_screen.dart';
 import 'goal_slider.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -134,6 +135,18 @@ class _LessonsTab extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       children: [
         _TodayCard(user, stats),
+        Card(
+          child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.mic)),
+            title: const Text('Luyện nói & Thu âm'),
+            subtitle: const Text('Thu âm giọng nói và lưu file WAV tạm'),
+            trailing: FilledButton.tonal(
+              onPressed: () => openSpeakingPractice(context),
+              child: const Text('Mở'),
+            ),
+            onTap: () => openSpeakingPractice(context),
+          ),
+        ),
         if (rec != null)
           Card(
             color: Theme.of(context).colorScheme.primaryContainer,
@@ -198,6 +211,13 @@ class _LessonSubtitle extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Mở màn hình luyện nói & thu âm WAV tạm.
+Future<void> openSpeakingPractice(BuildContext context) {
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute(builder: (_) => const SpeakingPracticeScreen()),
+  );
 }
 
 /// Runs a timed practice session; the practice screen may return another
